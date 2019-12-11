@@ -172,6 +172,17 @@ class TestHyperLogLogPlusPlus(TestHyperLogLog):
         self.assertEqual(h.reg[1], 1)
         self.assertEqual(h.reg[5], self._class._hash_range_bit - 4 - 3)
 
+    def test_estimate(self):
+        hll = HyperLogLog(4, hashfunc=fake_hash_func)
+        hpp = HyperLogLogPlusPlus(4, hashfunc=fake_hash_func)
+        for i in range(5):
+            hll.update(i)
+            hpp.update(i)
+        self.assertAlmostEqual(
+            hll._get_estimation(),
+            hpp._get_estimation(),
+            delta=1e-5)
+
 
 if __name__ == "__main__":
     unittest.main()
