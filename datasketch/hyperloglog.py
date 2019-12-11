@@ -132,14 +132,14 @@ class HyperLogLog(object):
             int: The estimated cardinality.
         '''
         # Use HyperLogLog estimation function
-        e = self.alpha * float(self.m ** 2) / np.sum(2.0**(-self.reg))
+        e = self._get_estimation()
         # Small range correction
         small_range_threshold = (5.0 / 2.0) * self.m
-        if abs(e-small_range_threshold)/small_range_threshold < 0.15:
+        if abs(e - small_range_threshold) / small_range_threshold < 0.15:
           warnings.warn(("Warning: estimate is close to error correction threshold. "
                         +"Output may not satisfy HyperLogLog accuracy guarantee."))
         if e <= small_range_threshold:
-            num_zero = self.m - np.count_nonzero(self.reg)
+            num_zero = self._get_num_zero()
             return self._linearcounting(num_zero)
         # Normal range, no correction
         if e <= (1.0 / 30.0) * (1 << 32):
@@ -222,6 +222,12 @@ class HyperLogLog(object):
                     bits" % self.max_rank)
         return rank
 
+    def _get_estimation(self):
+        return self.alpha * float(self.m ** 2) / np.sum(2.0 ** (-self.reg))
+
+    def _get_num_zero(self):
+        return self.m - np.count_nonzero(self.reg)
+
     def _linearcounting(self, num_zero):
         return self.m * np.log(self.m / float(num_zero))
 
@@ -295,6 +301,18 @@ class HyperLogLog(object):
                 buffer(buf), offset), dtype=np.int8)
 
 
+class SparseList(dict):
+    def __getitem__(self, key):
+        return self.get(key, 0)
+
+    def __setitem__(self, key, value):
+        if value > 0:
+            super().__setitem__(key, value)
+
+    def todense(self, m):
+        return np.array([self[i] for i in range(m)], dtype=np.int8)
+
+
 class HyperLogLogPlusPlus(HyperLogLog):
     '''
     HyperLogLog++ is an enhanced HyperLogLog `from Google
@@ -324,8 +342,37 @@ class HyperLogLogPlusPlus(HyperLogLog):
 
     def __init__(self, p=8, reg=None, hashfunc=sha1_hash64,
             hashobj=None):
+        self._reg = SparseList()
         super(HyperLogLogPlusPlus, self).__init__(p=p, reg=reg,
                 hashfunc=hashfunc, hashobj=hashobj)
+
+    @property
+    def reg(self):
+        return self._reg
+
+    @reg.setter
+    def reg(self, value):
+        if self._is_sparse():
+            for i, e in enumerate(value):
+                self._reg[i] = e
+        else:
+            self._reg = value
+
+    def _is_sparse(self):
+        return isinstance(self._reg, SparseList)
+
+    def _get_estimation(self):
+        if self._is_sparse():
+            denominator = sum([2.0 ** -v for v in self.reg.values()]) + (self.m - len(self.reg))
+            return self.alpha * float(self.m ** 2) / denominator
+        else:
+            return super()._get_estimation()
+
+    def _get_num_zero(self):
+        if self._is_sparse():
+            return self.m - len(self.reg)
+        else:
+            return super()._get_num_zero()
 
     def _get_threshold(self, p):
         return _thresholds[p - 4]
@@ -337,14 +384,14 @@ class HyperLogLogPlusPlus(HyperLogLog):
         return np.mean(bias_vector[nearest_neighbors])
 
     def count(self):
-        num_zero = self.m - np.count_nonzero(self.reg)
+        num_zero = self._get_num_zero()
         if num_zero > 0:
             # linear counting
             lc = self._linearcounting(num_zero)
             if lc <= self._get_threshold(self.p):
                 return lc
         # Use HyperLogLog estimation function
-        e = self.alpha * float(self.m ** 2) / np.sum(2.0**(-self.reg))
+        e = self._get_estimation()
         if e <= 5 * self.m:
             return e - self._estimate_bias(e, self.p)
         else:
