@@ -1,4 +1,4 @@
-import struct, copy
+import struct, copy, itertools
 import numpy as np
 import warnings
 try:
@@ -14,6 +14,13 @@ _bit_length = lambda bits : bits.bit_length()
 # For < Python 2.7
 if not hasattr(int, 'bit_length'):
     _bit_length = lambda bits : len(bin(bits)) - 2 if bits > 0 else 0
+
+
+def safe_unpack_from(*args):
+    try:
+        return struct.unpack_from(*args)
+    except TypeError:
+        return struct.unpack_from(args[0], buffer(args[1]), *args[2:])
 
 
 class HyperLogLog(object):
@@ -396,3 +403,66 @@ class HyperLogLogPlusPlus(HyperLogLog):
             return e - self._estimate_bias(e, self.p)
         else:
             return e
+
+    def bytesize(self):
+        if self._is_sparse():
+            header_size = struct.calcsize('B?')
+            body_size = struct.calcsize('HB')
+            return header_size + body_size * len(self.reg)
+        else:
+            sparse_flag_size = struct.calcsize('?')
+            return super().bytesize() + sparse_flag_size
+
+    def serialize(self, buf):
+        if len(buf) < self.bytesize():
+            raise ValueError("The buffer does not have enough space\
+                    for holding this HyperLogLog.")
+        if self._is_sparse():
+            # HB is a (register index, register value) pair.
+            fmt = '=B?' + 'HB' * len(self.reg)
+            struct.pack_into(fmt, buf, 0, self.p, self._is_sparse(),
+                             *itertools.chain.from_iterable([(i, v) for i, v in self.reg.items()]))
+        else:
+            fmt = 'B?%dB' % self.m
+            struct.pack_into(fmt, buf, 0, self.p, self._is_sparse(), *self.reg)
+
+    @classmethod
+    def deserialize(cls, buf):
+        header_size = struct.calcsize('B?')
+        p = safe_unpack_from('B', buf, 0)[0]
+        is_sparse = safe_unpack_from('?', buf, 1)[0]
+        h = cls(p)
+        offset = header_size
+        if is_sparse:
+            h._reg = SparseList()
+            index_size = struct.calcsize('H')
+            value_size = struct.calcsize('B')
+            while offset < len(buf):
+                i = safe_unpack_from('H', buf, offset)[0]
+                offset += index_size
+                v = safe_unpack_from('B', buf, offset)[0]
+                offset += value_size
+                h._reg[i] = v
+        else:
+            h.reg = np.array(safe_unpack_from('%dB' % h.m, buf, offset), dtype=np.int8)
+        return h
+
+    def __setstate__(self, buf):
+        header_size = struct.calcsize('B?')
+        p = safe_unpack_from('B', buf, 0)[0]
+        is_sparse = safe_unpack_from('?', buf, 1)[0]
+        self.__init__(p)
+        offset = header_size
+        if is_sparse:
+            self._reg = SparseList()
+            index_size = struct.calcsize('H')
+            value_size = struct.calcsize('B')
+            while offset < len(buf):
+                i = safe_unpack_from('H', buf, offset)[0]
+                offset += index_size
+                v = safe_unpack_from('B', buf, offset)[0]
+                offset += value_size
+                self._reg[i] = v
+        else:
+            self.reg = np.array(safe_unpack_from('%dB' % self.m, buf, offset), dtype=np.int8)
+
