@@ -390,6 +390,11 @@ class HyperLogLogPlusPlus(HyperLogLog):
         nearest_neighbors = np.argsort((e - estimate_vector)**2)[:6]
         return np.mean(bias_vector[nearest_neighbors])
 
+    def update(self, b):
+        super().update(b)
+        if self._is_sparse() and (self._sparse_bytesize() >= self._dense_bytesize()):
+            self._reg = self._reg.todense(self.m)
+
     def count(self):
         num_zero = self._get_num_zero()
         if num_zero > 0:
@@ -404,14 +409,20 @@ class HyperLogLogPlusPlus(HyperLogLog):
         else:
             return e
 
+    def _sparse_bytesize(self):
+        header_size = struct.calcsize('B?')
+        body_size = struct.calcsize('HB')
+        return header_size + body_size * len(self.reg)
+
+    def _dense_bytesize(self):
+        sparse_flag_size = struct.calcsize('?')
+        return super().bytesize() + sparse_flag_size
+
     def bytesize(self):
         if self._is_sparse():
-            header_size = struct.calcsize('B?')
-            body_size = struct.calcsize('HB')
-            return header_size + body_size * len(self.reg)
+            return self._sparse_bytesize()
         else:
-            sparse_flag_size = struct.calcsize('?')
-            return super().bytesize() + sparse_flag_size
+            return self._dense_bytesize()
 
     def serialize(self, buf):
         if len(buf) < self.bytesize():
@@ -444,7 +455,7 @@ class HyperLogLogPlusPlus(HyperLogLog):
                 offset += value_size
                 h._reg[i] = v
         else:
-            h.reg = np.array(safe_unpack_from('%dB' % h.m, buf, offset), dtype=np.int8)
+            h._reg = np.array(safe_unpack_from('%dB' % h.m, buf, offset), dtype=np.int8)
         return h
 
     def __setstate__(self, buf):
@@ -464,5 +475,5 @@ class HyperLogLogPlusPlus(HyperLogLog):
                 offset += value_size
                 self._reg[i] = v
         else:
-            self.reg = np.array(safe_unpack_from('%dB' % self.m, buf, offset), dtype=np.int8)
+            self._reg = np.array(safe_unpack_from('%dB' % self.m, buf, offset), dtype=np.int8)
 
