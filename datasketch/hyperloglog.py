@@ -360,8 +360,8 @@ class HyperLogLogPlusPlus(HyperLogLog):
     @reg.setter
     def reg(self, value):
         if self._is_sparse():
-            for i, e in enumerate(value):
-                self._reg[i] = e
+            for i in np.nonzero(value)[0]:
+                self._reg[i] = value[i]
         else:
             self._reg = value
 
