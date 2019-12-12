@@ -1,7 +1,7 @@
 '''
 Performance and accuracy of HyperLogLog
 '''
-import time, logging, random
+import time, logging, random, pickle
 from datasketch.hyperloglog import HyperLogLog, HyperLogLogPlusPlus
 
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +32,18 @@ def run_acc(size, seed, p, _class):
         s.add(v)
     perr = abs(float(len(s)) - h.count()) / float(len(s))
     return perr
+
+
+def run_pickle(card, p, _class):
+    logging.info(f'{_class.__name__} using p = {p}')
+    h = _class(p=p)
+    for i in range(card):
+        h.update(int_bytes(i))
+    start = time.clock()
+    pickle.loads(pickle.dumps(h))
+    duration = time.clock() - start
+    logging.info("Pickle and unpickled in %.4f sec with %d cards" % (duration, card))
+    return duration
 
 
 def run_bench(card, size, _class):
