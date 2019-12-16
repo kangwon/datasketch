@@ -349,9 +349,38 @@ class HyperLogLogPlusPlus(HyperLogLog):
 
     def __init__(self, p=8, reg=None, hashfunc=sha1_hash64,
             hashobj=None):
-        self._reg = SparseList()
-        super(HyperLogLogPlusPlus, self).__init__(p=p, reg=reg,
-                hashfunc=hashfunc, hashobj=hashobj)
+        if reg is None:
+            self.p = p
+            self.m = 1 << p
+            self._reg = SparseList()
+        elif isinstance(reg, np.ndarray):
+            # We have to check if the imported register has the correct length.
+            self.m = reg.size
+            self.p = _bit_length(self.m) - 1
+            if 1 << self.p != self.m:
+                raise ValueError("The imported register has \
+                    incorrect size. Expect a power of 2.")
+            # Generally we trust the user to import register that contains
+            # reasonable counter values, so we don't check for every values.
+            self._reg = reg
+        elif isinstance(reg, SparseList):
+            self.p = p
+            self.m = 1 << p
+            self._reg = reg
+        else:
+            raise ValueError("The imported register has wrong type; " +
+                            "%s" % type(reg))
+        # Check the hash function.
+        if not callable(hashfunc):
+            raise ValueError("The hashfunc must be a callable.")
+        # Check for use of hashobj and issue warning.
+        if hashobj is not None:
+            warnings.warn("hashobj is deprecated, use hashfunc instead.",
+                    DeprecationWarning)
+        self.hashfunc = hashfunc
+        # Common settings
+        self.alpha = self._get_alpha(self.p)
+        self.max_rank = self._hash_range_bit - self.p
 
     @property
     def reg(self):
@@ -408,6 +437,39 @@ class HyperLogLogPlusPlus(HyperLogLog):
             return e - self._estimate_bias(e, self.p)
         else:
             return e
+
+    def merge(self, other):
+        if self.m != other.m or self.p != other.p:
+            raise ValueError("Cannot merge HyperLogLog with different\
+                    precisions.")
+        if self._is_sparse() and other._is_sparse():
+            for idx in other.reg:
+                self._reg[idx] = max(self.reg[idx], other.reg[idx])
+        elif self._is_sparse():
+            self._reg = self._reg.todense(self.m)
+            super().merge(other)
+        elif other._is_sparse():
+            other._reg = other._reg.todense(other.m)
+            super().merge(other)
+        else:
+            super().merge(other)
+
+    @classmethod
+    def union(cls, *hyperloglogs):
+        if len(hyperloglogs) < 2:
+            raise ValueError("Cannot union less than 2 HyperLogLog\
+                    sketches")
+        p = hyperloglogs[0].p
+        if not all(h.p == p for h in hyperloglogs):
+            raise ValueError("Cannot union HyperLogLog sketches with\
+                    different precisions")
+        ret = cls(p=p)
+        for h in hyperloglogs:
+            ret.merge(h)
+        return ret
+
+    def copy(self):
+        return self.__class__(p=self.p, reg=self.digest(), hashfunc=self.hashfunc)
 
     def _sparse_bytesize(self):
         header_size = struct.calcsize('B?')

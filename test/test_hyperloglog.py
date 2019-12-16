@@ -142,6 +142,11 @@ class TestHyperLogLogPlusPlus(TestHyperLogLog):
 
     _class = HyperLogLogPlusPlus
 
+    def test_init(self):
+        h = self._class(4, hashfunc=fake_hash_func)
+        self.assertEqual(h.m, 1 << 4)
+        self.assertEqual(len(h.reg), 0)
+
     def test_update(self):
         h = self._class(4, hashfunc=fake_hash_func)
         h.update(0b00011111)
