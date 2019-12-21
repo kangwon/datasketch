@@ -308,6 +308,60 @@ class HyperLogLog(object):
                 buffer(buf), offset), dtype=np.int8)
 
 
+class HyperLogLogPlusPlus(HyperLogLog):
+    '''
+    HyperLogLog++ is an enhanced HyperLogLog `from Google
+    <http://research.google.com/pubs/pub40671.html>`_.
+    Main changes from the original HyperLogLog:
+    1. Use 64 bits instead of 32 bits for hash function
+    2. A new small-cardinality estimation scheme
+    3. Sparse representation (not implemented here)
+    Args:
+        p (int, optional): The precision parameter. It is ignored if
+            the `reg` is given.
+        reg (numpy.array, optional): The internal state.
+            This argument is for initializing the HyperLogLog from
+            an existing one.
+        hashfunc (optional): The hash function used by this MinHash.
+            It takes the input passed to the `update` method and
+            returns an integer that can be encoded with 64 bits.
+            The default hash function is based on SHA1 from hashlib_.
+        hashobj (**deprecated**): This argument is deprecated since version
+            1.4.0. It is a no-op and has been replaced by `hashfunc`.
+    '''
+
+    _hash_range_bit = 64
+    _hash_range_byte = 8
+
+    def __init__(self, p=8, reg=None, hashfunc=sha1_hash64,
+            hashobj=None):
+        super(HyperLogLogPlusPlus, self).__init__(p=p, reg=reg,
+                hashfunc=hashfunc, hashobj=hashobj)
+
+    def _get_threshold(self, p):
+        return _thresholds[p - 4]
+
+    def _estimate_bias(self, e, p):
+        bias_vector = _bias[p - 4]
+        estimate_vector = _raw_estimate[p - 4]
+        nearest_neighbors = np.argsort((e - estimate_vector)**2)[:6]
+        return np.mean(bias_vector[nearest_neighbors])
+
+    def count(self):
+        num_zero = self.m - np.count_nonzero(self.reg)
+        if num_zero > 0:
+            # linear counting
+            lc = self._linearcounting(num_zero)
+            if lc <= self._get_threshold(self.p):
+                return lc
+        # Use HyperLogLog estimation function
+        e = self.alpha * float(self.m ** 2) / np.sum(2.0**(-self.reg))
+        if e <= 5 * self.m:
+            return e - self._estimate_bias(e, self.p)
+        else:
+            return e
+
+
 class SparseList(dict):
     def __getitem__(self, key):
         return self.get(key, 0)
@@ -320,7 +374,7 @@ class SparseList(dict):
         return np.array([self[i] for i in range(m)], dtype=np.int8)
 
 
-class HyperLogLogPlusPlus(HyperLogLog):
+class SparseHyperLogLogPlusPlus(HyperLogLog):
     '''
     HyperLogLog++ is an enhanced HyperLogLog `from Google
     <http://research.google.com/pubs/pub40671.html>`_.
