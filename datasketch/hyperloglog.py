@@ -451,6 +451,9 @@ class SparseHyperLogLogPlusPlus(HyperLogLog):
     def _is_sparse(self):
         return isinstance(self._reg, SparseList)
 
+    def _should_dense(self):
+        return self._is_sparse() and (self._sparse_bytesize() >= self._dense_bytesize())
+
     def _get_estimation(self):
         if self._is_sparse():
             denominator = sum([2.0 ** -v for v in self.reg.values()]) + (self.m - len(self.reg))
@@ -475,7 +478,7 @@ class SparseHyperLogLogPlusPlus(HyperLogLog):
 
     def update(self, b):
         super().update(b)
-        if self._is_sparse() and (self._sparse_bytesize() >= self._dense_bytesize()):
+        if self._should_dense():
             self._reg = self._reg.todense(self.m)
 
     def count(self):
@@ -592,4 +595,3 @@ class SparseHyperLogLogPlusPlus(HyperLogLog):
                 self._reg[i] = v
         else:
             self._reg = np.array(safe_unpack_from('%dB' % self.m, buf, offset), dtype=np.int8)
-
