@@ -2,7 +2,7 @@
 Performance and accuracy of HyperLogLog
 '''
 import time, logging, random, pickle
-from datasketch.hyperloglog import HyperLogLog, HyperLogLogPlusPlus, SparseHyperLogLogPlusPlus
+from datasketch.hyperloglog import HyperLogLog, HyperLogLogPlusPlus, HyperLogLogPlusPlusSparse
 
 logging.basicConfig(level=logging.INFO)
 
@@ -81,4 +81,4 @@ def run_bench(card, size, _class):
 
 run_bench(5000, 5000, HyperLogLog)
 run_bench(5000, 5000, HyperLogLogPlusPlus)
-run_bench(5000, 5000, SparseHyperLogLogPlusPlus)
+run_bench(5000, 5000, HyperLogLogPlusPlusSparse)

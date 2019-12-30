@@ -374,7 +374,7 @@ class SparseList(dict):
         return np.array([self[i] for i in range(m)], dtype=np.int8)
 
 
-class SparseHyperLogLogPlusPlus(HyperLogLog):
+class HyperLogLogPlusPlusSparse(HyperLogLog):
     '''
     HyperLogLog++ is an enhanced HyperLogLog `from Google
     <http://research.google.com/pubs/pub40671.html>`_.
