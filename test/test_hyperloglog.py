@@ -3,7 +3,7 @@ import struct
 import pickle
 from mock import patch
 import numpy as np
-from datasketch.hyperloglog import HyperLogLog, HyperLogLogPlusPlus
+from datasketch.hyperloglog import HyperLogLog, HyperLogLogPlusPlus, HyperLogLogPlusPlusSparse
 from test.utils import fake_hash_func
 
 
@@ -142,11 +142,6 @@ class TestHyperLogLogPlusPlus(TestHyperLogLog):
 
     _class = HyperLogLogPlusPlus
 
-    def test_init(self):
-        h = self._class(4, hashfunc=fake_hash_func)
-        self.assertEqual(h.m, 1 << 4)
-        self.assertEqual(len(h.reg), 0)
-
     def test_update(self):
         h = self._class(4, hashfunc=fake_hash_func)
         h.update(0b00011111)
@@ -187,6 +182,16 @@ class TestHyperLogLogPlusPlus(TestHyperLogLog):
             hll._get_estimation(),
             hpp._get_estimation(),
             delta=1e-5)
+
+
+class TestHyperLogLogPlusPlusSparse(TestHyperLogLogPlusPlus):
+
+    _class = HyperLogLogPlusPlusSparse
+
+    def test_init(self):
+        h = self._class(4, hashfunc=fake_hash_func)
+        self.assertEqual(h.m, 1 << 4)
+        self.assertEqual(len(h.reg), 0)
 
 
 if __name__ == "__main__":
